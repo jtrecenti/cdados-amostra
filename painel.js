@@ -172,12 +172,21 @@ function daTurma(etapa) {
   return estado.respostas[etapa].filter((r) => !estado.turma || r.turma === estado.turma);
 }
 
+/** Nome, turma e, a partir da segunda, o número da amostra (para a dica). */
+function quem(r) {
+  const turma = r.turma ? ` (${r.turma})` : "";
+  return `${r.nome}${turma}${r.k > 1 ? `, amostra ${r.k}` : ""}`;
+}
+
+/** Quantos alunos diferentes mandaram pelo menos uma amostra. */
+const nAlunos = (rs) => new Set(rs.map((r) => r.login)).size;
+
 function pontosMedia() {
   const alunos = daTurma("media").map((r) => ({
-    chave: `a:${r.login}:${r.media}`,
+    chave: `a:${r.login}:${r.k || 1}`,
     x: r.media,
     aluno: true,
-    dica: `${r.nome}${r.turma ? ` (${r.turma})` : ""}\nR$ ${fmt(r.media, 0)} por m²`,
+    dica: `${quem(r)}\nR$ ${fmt(r.media, 0)} por m²`,
   }));
   const sim = estado.simuladas.map((m, i) => ({
     chave: `s:${i}`,
@@ -306,11 +315,11 @@ function desenharMedias(svg) {
 function itensIC() {
   const contem = (r) => r.lo <= estado.mu && estado.mu <= r.hi;
   const alunos = daTurma("ic").map((r) => ({
-    chave: `ai:${r.login}:${r.lo}:${r.hi}`,
+    chave: `ai:${r.login}:${r.k || 1}`,
     ...r,
     aluno: true,
     dentro: contem(r),
-    dica: `${r.nome}${r.turma ? ` (${r.turma})` : ""}\nde R$ ${fmt(r.lo, 0)} a R$ ${fmt(r.hi, 0)} (z = ${fmt(r.z, 2)})`,
+    dica: `${quem(r)}\nde R$ ${fmt(r.lo, 0)} a R$ ${fmt(r.hi, 0)} (z = ${fmt(r.z, 2)})`,
   }));
   const sim = estado.simuladosIC.map((r, i) => ({
     chave: `si:${i}`,
@@ -383,7 +392,10 @@ function desenhar() {
   $("#duas").classList.toggle("cheia", estado.solto[estado.vista]);
   $("#qr").src = QR[estado.vista];
   $("#endereco").textContent = ENDERECO[estado.vista];
-  $("#contador").firstChild.textContent = String(daTurma(estado.vista).length);
+  const rs = daTurma(estado.vista);
+  const na = nAlunos(rs);
+  $("#contador").firstChild.textContent = String(rs.length);
+  $("#contador small").textContent = `amostras de ${na} ${na === 1 ? "aluno" : "alunos"}`;
   $("#b-soltar").textContent = estado.solto[estado.vista] ? "esconder" : "soltar";
   $("#b-modo").hidden = estado.vista !== "media";
   $("#c-normal").parentElement.hidden = estado.vista !== "media";

@@ -29,6 +29,7 @@ const estado = {
   amostra: null,
   calculo: null, // o que vai para o painel
   rodouA: false, // na etapa do intervalo, a primeira célula
+  k: 1, // número da última amostra enviada; a 1 é a da tabela
 };
 
 function lembrado() {
@@ -37,6 +38,21 @@ function lembrado() {
 
 function lembrar(login) {
   try { localStorage.setItem(CHAVE_LOGIN, login); } catch { /* navegação privada */ }
+}
+
+/*
+ * Até onde o aluno já foi no "sortear outra", para continuar dali se recarregar
+ * a página. Sem isso nada quebra: a amostra k é sempre a mesma, então
+ * reenviar só regrava o mesmo ponto.
+ */
+const chaveK = () => `cdadeng-amostra-k:${ETAPA}:${estado.login}`;
+
+function ultimoK() {
+  try { return Math.max(1, Number(localStorage.getItem(chaveK())) || 1); } catch { return 1; }
+}
+
+function guardarK(k) {
+  try { localStorage.setItem(chaveK(), String(k)); } catch { /* navegação privada */ }
 }
 
 async function enviar(corpo) {
@@ -68,6 +84,7 @@ function telaLogin(erro = "") {
     estado.amostra = sortear(estado.pop.linhas, AMOSTRA.n, sementeDoLogin(login));
     estado.calculo = null;
     estado.rodouA = false;
+    estado.k = ultimoK();
     telaAmostra();
   };
   botao.addEventListener("click", entrar);
@@ -210,13 +227,70 @@ function telaAmostra() {
     );
   }
 
+  /*
+   * Depois da primeira, as outras amostras saem num toque: sorteia, faz a
+   * mesma conta (no intervalo, com o z que o aluno digitou) e já envia. Cada
+   * toque é mais um ponto no painel.
+   */
+  const mais = el("div.mais");
+  function mostrarMais() {
+    if (mais.childElementCount) return;
+    const lista = el("ol.outras");
+    const aviso = el("div");
+    const botao = el("button.acao", { type: "button" });
+    const rotular = () => {
+      const fim = estado.k >= AMOSTRA.maxAmostras;
+      botao.textContent = fim ? "chega de amostras por hoje" : `sortear a amostra ${estado.k + 1} e enviar`;
+      botao.disabled = fim;
+    };
+    botao.addEventListener("click", async () => {
+      const k = estado.k + 1;
+      if (k > AMOSTRA.maxAmostras) return;
+      botao.disabled = true;
+      limpar(aviso);
+      const vk = valores(sortear(estado.pop.linhas, AMOSTRA.n, sementeDoLogin(estado.login, k)));
+      let c = { media: media(vk) };
+      if (ETAPA === "ic") {
+        const r = intervalo(vk, estado.calculo.z);
+        c = { media: r.media, lo: r.lo, hi: r.hi, z: r.z };
+      }
+      try {
+        if (CONFIG.registrar) await enviar({ etapa: ETAPA, login: estado.login, k, ...c });
+        estado.k = k;
+        guardarK(k);
+        lista.prepend(el("li", {
+          value: k,
+          texto: ETAPA === "media"
+            ? `R$ ${fmt(c.media, 0)} por m²`
+            : `de R$ ${fmt(c.lo, 0)} a R$ ${fmt(c.hi, 0)}`,
+        }));
+      } catch (erro) {
+        aviso.append(el("div.painel.aviso", { texto: `Não consegui enviar: ${erro.message || erro}. Tente de novo.` }));
+      } finally {
+        rotular();
+      }
+    });
+    rotular();
+    mais.append(
+      el("h2", { texto: "Mais amostras" }),
+      el("p", {
+        texto: ETAPA === "media"
+          ? "Cada toque sorteia outros 100 apartamentos, calcula o VM2 médio e manda para o painel. Quanto mais pontos, mais nítido o desenho."
+          : "Cada toque sorteia outros 100 apartamentos, calcula o intervalo com o mesmo z e manda para o painel.",
+      }),
+      botao,
+      aviso,
+      lista,
+    );
+  }
+
   botaoEnviar.addEventListener("click", async () => {
     if (!estado.calculo) return;
     botaoEnviar.disabled = true;
     limpar(status);
     try {
       if (CONFIG.registrar) {
-        await enviar({ etapa: ETAPA, login: estado.login, ...estado.calculo });
+        await enviar({ etapa: ETAPA, login: estado.login, k: 1, ...estado.calculo });
       }
       const c = estado.calculo;
       status.append(el("div.painel.ok", {}, [
@@ -225,6 +299,7 @@ function telaAmostra() {
           ? `VM2 médio na sua amostra: R$ ${fmt(c.media, 0)} por m².`
           : `Seu intervalo: de R$ ${fmt(c.lo, 0)} a R$ ${fmt(c.hi, 0)} por m².`,
       ]));
+      mostrarMais();
     } catch (erro) {
       status.append(el("div.painel.aviso", {}, [
         el("b", { texto: "Não consegui enviar." }),
@@ -238,6 +313,7 @@ function telaAmostra() {
   tela.append(
     botaoEnviar,
     status,
+    mais,
     el("button.acao.secundaria", {
       type: "button", texto: "trocar de login", style: "margin-top:.8rem",
       onclick: () => telaLogin(),

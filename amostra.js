@@ -22,6 +22,8 @@ export const AMOSTRA = {
   // Muda a semente de todo mundo de uma vez. Trocar entre semestres, para a
   // amostra de um login não se repetir de uma turma para outra.
   sal: "cdadeng-2026-2-aula21",
+  // Quantas amostras cada login pode mandar por etapa (o Worker confere).
+  maxAmostras: 100,
 };
 
 let cache = null;
@@ -74,8 +76,13 @@ function mulberry32(a) {
   };
 }
 
-export function sementeDoLogin(login) {
-  return cyrb53(`${AMOSTRA.sal}|${login}`) % 4294967296;
+/**
+ * A amostra 1 é a do login (a mesma nas duas etapas); as seguintes, do botão
+ * "sortear outra", acrescentam o número à semente.
+ */
+export function sementeDoLogin(login, k = 1) {
+  const texto = k === 1 ? `${AMOSTRA.sal}|${login}` : `${AMOSTRA.sal}|${login}|${k}`;
+  return cyrb53(texto) % 4294967296;
 }
 
 /**
