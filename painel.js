@@ -228,13 +228,39 @@ function desenharMedias(svg) {
     let unidade;
 
     if (estado.modo === "pontos") {
-      const d = Math.min(faixaPx * 0.92, altura / maior);
-      unidade = d;
+      // As bolinhas enchem a caixinha em camadas, como areia, em vez de
+      // empilhar numa coluna só: com centenas de amostras a coluna única
+      // virava um fio de pontinhos. Escolhe o número de colunas que deixa a
+      // bolinha maior sem a caixinha mais cheia passar do topo.
+      const larguraUtil = faixaPx - 2;
+      let cols = 1;
+      let d = 0;
+      for (let c = 1; c <= 12; c += 1) {
+        const dc = Math.min(larguraUtil / c, altura / Math.ceil(maior / c));
+        if (dc > d + 1e-9) { d = dc; cols = c; }
+      }
+      unidade = d / cols;
+
+      // As paredes das caixinhas, bem leves, da altura da mais cheia.
+      const paredes = svgEl("g", { class: "paredes" }, g);
+      const alto = Math.ceil(maior / cols) * d + d * 0.6;
+      for (let i = iMin; i <= iMax; i += 1) {
+        const esq = Math.max(M.e, centro(i) - faixaPx / 2);
+        const dir = Math.min(W - M.d, centro(i) + faixaPx / 2);
+        svgEl("path", { d: `M${esq},${H - M.b - alto}V${H - M.b}M${dir},${H - M.b - alto}V${H - M.b}` }, paredes);
+      }
+
       let atraso = 0;
+      const passoAtraso = Math.max(2, Math.min(35, 1800 / Math.max(1, pts.length - estado.vistos.size)));
       pilhas.forEach(([i, pilha]) => pilha.forEach((p, k) => {
+        const linha = Math.floor(k / cols);
+        // a camada de cima, se incompleta, fica centralizada na caixinha
+        const naLinha = Math.min(cols, pilha.length - linha * cols);
+        const coluna = k % cols;
+        const esq = centro(i) - (naLinha * d) / 2;
         const c = svgEl("circle", {
-          cx: centro(i),
-          cy: H - M.b - (k + 0.5) * d,
+          cx: esq + (coluna + 0.5) * d,
+          cy: H - M.b - (linha + 0.5) * d,
           r: (d / 2) * 0.86,
           class: p.aluno ? "aluno" : "simulada",
           "data-dica": p.dica,
@@ -243,7 +269,7 @@ function desenharMedias(svg) {
           estado.vistos.add(p.chave);
           c.classList.add("cai");
           c.style.animationDelay = `${Math.min(atraso, 1800)}ms`;
-          atraso += 35;
+          atraso += passoAtraso;
         }
       }));
     } else {
